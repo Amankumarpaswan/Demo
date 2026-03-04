@@ -1,1 +1,1 @@
-# Demo
+# celebration-app

@@ -1,0 +1,7 @@
+{
+  "/page": "app/page.js",
+  "/create/page": "app/create/page.js",
+  "/api/generate-poster-styling/route": "app/api/generate-poster-styling/route.js",
+  "/api/generate-poster-layout/route": "app/api/generate-poster-layout/route.js",
+  "/celebrate/preview/page": "app/celebrate/preview/page.js"
+}
