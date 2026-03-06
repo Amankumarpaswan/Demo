@@ -1,4 +1,4 @@
-// File: /workspaces/Demo/celebration-app/app/celebrate/preview/page.tsx
+// File: /workspaces/Demo/app/celebrate/preview/page.tsx
 import * as entry from '../../../../../app/celebrate/preview/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

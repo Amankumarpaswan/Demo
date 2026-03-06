@@ -1,4 +1,4 @@
-// File: /workspaces/Demo/celebration-app/app/api/generate-poster-layout/route.ts
+// File: /workspaces/Demo/app/api/generate-poster-layout/route.ts
 import * as entry from '../../../../../app/api/generate-poster-layout/route.js'
 import type { NextRequest } from 'next/server.js'
 

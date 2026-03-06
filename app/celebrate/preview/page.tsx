@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-// --- ADDED RefreshCw ICON HERE ---
 import { Download, Share2, Volume2, VolumeX, Gift, Home, MessageCircle, QrCode, X, Send, User, Loader2, Info, RefreshCw } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import confetti from 'canvas-confetti';
@@ -903,13 +902,10 @@ export default function FreeStoryMode() {
   const [globalPopCount, setGlobalPopCount] = useState(0);
   const [showPopNumber, setShowPopNumber] = useState(false);
   
-  // NEW: State to track if the user has downloaded at least once
   const [hasDownloaded, setHasDownloaded] = useState(false);
 
-  // TASK 7: Store the birthday line chosen for "For Yourself" birthday
   const [birthdaySelfLine, setBirthdaySelfLine] = useState('');
 
-  // Volume control state
   const volumeLevel = useRef(70);
   const [volDisplay, setVolDisplay] = useState({ show: false, level: 70 });
   const touchStartPos = useRef({ x: 0, y: 0 });
@@ -930,7 +926,6 @@ export default function FreeStoryMode() {
     if (saved) {
       const parsedData = JSON.parse(saved);
 
-      // TASK 6: Generate or retrieve unique story ID
       if (!parsedData.storyId) {
         parsedData.storyId = `story-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         localStorage.setItem('celebrationData', JSON.stringify(parsedData));
@@ -938,11 +933,9 @@ export default function FreeStoryMode() {
 
       setData(parsedData);
 
-      // TASK 6: Load comments ONLY for THIS specific story
       const allCommentsStr = localStorage.getItem('storyCommentsV3');
       if (allCommentsStr) {
         const allComments = JSON.parse(allCommentsStr);
-        // Filter to get only comments for this story
         const storyComments = allComments.filter((c: any) => c.storyId === parsedData.storyId);
         setComments(storyComments);
       }
@@ -962,7 +955,6 @@ export default function FreeStoryMode() {
       const savedCoupleTerm = localStorage.getItem('coupleTerm');
       if (savedCoupleTerm) setCoupleTerm(savedCoupleTerm);
 
-      // TASK 7: Assign a rotating birthday line for "For Yourself" birthday stories
       if (parsedData.category === 'BIRTHDAY' && parsedData.isForSelf) {
         const line = BIRTHDAY_SELF_LINES[birthdayLineIndex % BIRTHDAY_SELF_LINES.length];
         birthdayLineIndex++;
@@ -971,7 +963,6 @@ export default function FreeStoryMode() {
     }
   }, []);
 
-  // Keep overlay ref in sync with state
   useEffect(() => {
     isOverlayOpen.current = showQR || showComments || showAchievements;
   }, [showQR, showComments, showAchievements]);
@@ -987,7 +978,6 @@ export default function FreeStoryMode() {
     }, 800);
   };
 
-  // Volume control handlers
   const onVolTouchStart = (e: TouchEvent) => {
     if (isOverlayOpen.current) return;
     if (stage !== 'STORY') return;
@@ -1051,7 +1041,6 @@ export default function FreeStoryMode() {
     };
   }, [stage]);
 
-  // TASK 3: Back button handling for story view
   useEffect(() => {
     window.history.pushState({ storyView: true }, '');
 
@@ -1210,7 +1199,7 @@ export default function FreeStoryMode() {
   };
 
 
-  // --- UPDATED HANDLE DOWNLOAD (AI Logic Added, NO minification) ---
+  // --- UPDATED HANDLE DOWNLOAD (AI Routing JSON Logic Added) ---
   const handleDownload = async () => {
     if (!data) return;
     setIsDownloading(true);
@@ -1220,6 +1209,7 @@ export default function FreeStoryMode() {
       const subtitle = data.customMessage || '';
 
       const isLayout2 = data.category === 'SPECIAL' && ['JYANTI', 'DIVAS', 'FESTIVALS'].includes(data.specialSubcategory);
+      
       const layoutType = isLayout2 ? 'LAYOUT_2_JAYANTI' : 'LAYOUT_1_COLLAGE';
       const apiEndpoint = isLayout2 ? '/api/generate-poster-layout' : '/api/generate-poster-styling';
 
@@ -1262,12 +1252,6 @@ export default function FreeStoryMode() {
         }
       }
 
-      if (layoutType === 'LAYOUT_1_COLLAGE' && loadedImages.length > 0 && loadedImages.length < 5) {
-        while (loadedImages.length < 5) {
-          loadedImages.push(loadedImages[0]);
-        }
-      }
-
       const canvas = document.createElement('canvas');
 
       await generatePosterCanvas(
@@ -1288,7 +1272,6 @@ export default function FreeStoryMode() {
       dlLink.href = canvas.toDataURL('image/jpeg', 0.95);
       dlLink.click();
 
-      // NEW: Set hasDownloaded to true so button changes to Redesign
       setHasDownloaded(true);
 
     } catch (err) {
@@ -1317,7 +1300,6 @@ export default function FreeStoryMode() {
   const addComment = () => {
     if (!inputMsg.trim() || !data) return;
 
-    // TASK 6: Add storyId to comment
     const c: Comment = {
       id: Date.now().toString(),
       name: visitorName || 'Guest',
@@ -1326,15 +1308,12 @@ export default function FreeStoryMode() {
       storyId: data.storyId
     };
 
-    // Load all comments from storage
     const allCommentsStr = localStorage.getItem('storyCommentsV3');
     const allComments = allCommentsStr ? JSON.parse(allCommentsStr) : [];
 
-    // Add new comment to global list
     const updatedAllComments = [...allComments, c];
     localStorage.setItem('storyCommentsV3', JSON.stringify(updatedAllComments));
 
-    // Update UI with this story's comments only
     const storyComments = updatedAllComments.filter((comment: any) => comment.storyId === data.storyId);
     setComments(storyComments);
 
@@ -1359,7 +1338,6 @@ export default function FreeStoryMode() {
 
   const isBirthdaySelf = data.category === 'BIRTHDAY' && data.isForSelf;
 
-  // TASK 2 & 3: Check if occasion name heading style applies (Jayanti, Divas, Festivals)
   const isOccasionNameType =
     data.specialSubcategory === 'JYANTI' ||
     data.specialSubcategory === 'DIVAS' ||
@@ -1407,7 +1385,6 @@ export default function FreeStoryMode() {
             <div className="absolute bottom-0 left-0 w-full pointer-events-none" style={{ zIndex: 4, height: `${BASE.overlayHeightPercent}%`, background: 'linear-gradient(to top, #000 15%, rgba(0,0,0,0.9) 50%, transparent 100%)' }} />
           </div>
 
-          {/* Top Bar */}
           <div className="absolute top-0 w-full flex justify-between items-center" style={{ padding: S.topPadding, zIndex: 20 }}>
             <div className="flex items-center" style={{ gap: S.topGap }}>
               <button onClick={() => router.push('/')} className="flex items-center justify-center bg-black/40 rounded-full backdrop-blur-md border border-[#d4af37]/30 hover:bg-[#d4af37] hover:text-black transition-all" style={{ width: S.topButtonSize, height: S.topButtonSize }}>
@@ -1419,7 +1396,6 @@ export default function FreeStoryMode() {
                   <div className="rounded-full border border-[#d4af37] overflow-hidden bg-gray-800" style={{ width: S.creatorAvatarSize, height: S.creatorAvatarSize }}>
                     {effectiveCreatorPhoto ? <img src={effectiveCreatorPhoto} className="w-full h-full object-cover" alt="" /> : <div className="w-full h-full flex items-center justify-center text-[#d4af37]" style={{ fontSize: S.creatorNameSize }}>{effectiveCreatorName?.charAt(0) || 'M'}</div>}
                   </div>
-                  {/* TASK 4: LEFT-aligned creator name with proper two-line format for "From your wife/husband" */}
                   <div className="flex flex-col leading-none justify-center" style={{ textAlign: 'left' }}>
                     {!isAutoProfile(effectiveCreatorName) && (
                       <span className="text-[#d4af37] uppercase tracking-wider" style={{ fontSize: S.creatorBySize, marginBottom: S.creatorByMargin }}>By</span>
@@ -1454,18 +1430,10 @@ export default function FreeStoryMode() {
             </div>
           </div>
 
-          {/* Story Content */}
           <div className="absolute bottom-0 w-full text-center flex flex-col items-center justify-end pointer-events-none" style={{ height: `${BASE.overlayHeightPercent}%`, paddingLeft: S.contentPadX, paddingRight: S.contentPadX, paddingBottom: S.contentPadBottom, zIndex: 20 }}>
 
-            {/* TASK 2: Birthday "For Yourself" — occasion heading + quote */}
             {isBirthdaySelf ? (
               <>
-                {/*
-                  UNIFIED OCCASION HEADING — shared by all 4 types:
-                  Birthday line, Jayanti name, Special Day name, Festival name.
-                  <h1> element, font-weight: normal (400), royal color (#d4af37),
-                  golden glow text-shadow, NO divider line.
-                */}
                 <h1
                   className="font-serif leading-tight drop-shadow-[0_4px_8px_rgba(0,0,0,1)]"
                   style={{
@@ -1480,7 +1448,6 @@ export default function FreeStoryMode() {
                   {birthdaySelfLine}
                 </h1>
 
-                {/* Quote — plain italic, visually distinct from heading above */}
                 <p className="text-white/80 italic leading-relaxed font-serif drop-shadow-[0_2px_4px_rgba(0,0,0,1)]"
                   style={{ fontSize: S.messageSize, maxWidth: S.messageMaxWidth }}>
                   "{data.customMessage}"
@@ -1488,12 +1455,6 @@ export default function FreeStoryMode() {
               </>
             ) : isOccasionNameType ? (
               <>
-                {/*
-                  UNIFIED OCCASION HEADING — Jayanti / Special Day / Festivals.
-                  SAME style as Birthday Self heading above: <h1>, font-weight: normal,
-                  royal color (#d4af37), golden glow, NO divider line.
-                  fontSize: S.nameSize (not S.titleSize which is 12px).
-                */}
                 {getFormattedTitle() && (
                   <h1
                     className="font-serif leading-tight drop-shadow-[0_4px_8px_rgba(0,0,0,1)]"
@@ -1510,7 +1471,6 @@ export default function FreeStoryMode() {
                   </h1>
                 )}
 
-                {/* Quote — plain italic, visually distinct from heading above */}
                 <p className="text-white/80 italic leading-relaxed font-serif drop-shadow-[0_2px_4px_rgba(0,0,0,1)]"
                   style={{ fontSize: S.messageSize, maxWidth: S.messageMaxWidth }}>
                   "{data.customMessage}"
@@ -1518,7 +1478,6 @@ export default function FreeStoryMode() {
               </>
             ) : (
               <>
-                {/* HEADING: Small uppercase occasion label (Marriage/Relationship/Birthday-for-other etc.) */}
                 {getFormattedTitle() && (
                   <h3
                     className="font-sans uppercase drop-shadow-[0_2px_4px_rgba(0,0,0,1)]"
@@ -1537,7 +1496,6 @@ export default function FreeStoryMode() {
                   </h3>
                 )}
 
-                {/* NAME */}
                 {displayName && (
                   <h1 className="font-serif text-white drop-shadow-[0_4px_8px_rgba(0,0,0,1)] leading-tight"
                     style={{ fontSize: S.nameSize, marginBottom: S.nameMarginBottom }}>
@@ -1545,7 +1503,6 @@ export default function FreeStoryMode() {
                   </h1>
                 )}
 
-                {/* TERM LINE — pill capsule */}
                 {termLine && (
                   <div
                     className="bg-[#d4af37]/20 border border-[#d4af37]/40 backdrop-blur-sm"
@@ -1565,7 +1522,6 @@ export default function FreeStoryMode() {
                   </div>
                 )}
 
-                {/* Quote — plain, visually distinct from styled headings above */}
                 <p className="text-white/80 italic leading-relaxed font-serif drop-shadow-[0_2px_4px_rgba(0,0,0,1)]"
                   style={{ fontSize: S.messageSize, maxWidth: S.messageMaxWidth }}>
                   "{data.customMessage}"
@@ -1576,7 +1532,6 @@ export default function FreeStoryMode() {
 
           <CommentSlideshow comments={comments} S={S} />
 
-          {/* Action Buttons (Updated with hasDownloaded logic) */}
           <div className="absolute w-full flex justify-center" style={{ bottom: S.actionBottom, gap: S.actionGap, zIndex: 30 }}>
             {[
               { icon: hasDownloaded ? RefreshCw : Download, label: hasDownloaded ? 'Redesign' : 'Save', onClick: handleDownload },
@@ -1591,7 +1546,6 @@ export default function FreeStoryMode() {
             ))}
           </div>
 
-          {/* Volume indicator */}
           {volDisplay.show && (
             <div style={{
               position: 'fixed',
@@ -1651,7 +1605,6 @@ export default function FreeStoryMode() {
         </div>
       )}
 
-      {/* QR Modal */}
       {showQR && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm" style={{ padding: 16 }} onClick={() => setShowQR(false)}>
           <div className="bg-[#1a0505] border border-[#d4af37] rounded-2xl text-center shadow-[0_0_50px_rgba(212,175,55,0.2)] overflow-hidden" style={{ width: qrModalMaxWidth, maxWidth: '100%', padding: 20 }} onClick={e => e.stopPropagation()}>
@@ -1668,7 +1621,6 @@ export default function FreeStoryMode() {
         </div>
       )}
 
-      {/* Comments Modal */}
       {showComments && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" style={{ padding: 8 }} onClick={() => setShowComments(false)}>
           <div className="bg-[#1a0505] rounded-2xl border border-[#d4af37]/30 flex flex-col shadow-2xl overflow-hidden" style={{ width: commentsModalMaxWidth, maxWidth: '100%', height: commentsModalMaxHeight, maxHeight: 'calc(100vh - 32px)' }} onClick={e => e.stopPropagation()}>
