@@ -1,4 +1,4 @@
-//app/api/generate-quote/route.ts
+//file path: app/api/generate-quote/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
 
