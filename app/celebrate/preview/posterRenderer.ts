@@ -1,3 +1,5 @@
+//file path:app/celebrate/preview/posterRenderer.ts
+
 export type LayoutType = 'LAYOUT_1_COLLAGE' | 'LAYOUT_2_JAYANTI';
 
 const getIntelligentFontSize = (text: string, isTitle: boolean, aiSize?: string, defaultSize?: number) => {
