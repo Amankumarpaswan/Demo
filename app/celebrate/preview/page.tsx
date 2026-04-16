@@ -1,3 +1,5 @@
+//file path: app/celebrate/preview/page.tsx
+
 'use client';
 
 import { useState, useEffect, useRef, useMemo } from 'react';
