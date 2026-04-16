@@ -1,3 +1,5 @@
+//file path: app/api/generate-poster-styling/route.ts
+  
 import { NextResponse } from 'next/server';
 
 const FALLBACK_STYLE = {
