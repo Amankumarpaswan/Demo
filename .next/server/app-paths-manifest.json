@@ -1,6 +1,6 @@
 {
-  "/page": "app/page.js",
   "/create/page": "app/create/page.js",
   "/celebrate/preview/page": "app/celebrate/preview/page.js",
-  "/api/generate-poster-layout/route": "app/api/generate-poster-layout/route.js"
+  "/api/generate-poster-layout/route": "app/api/generate-poster-layout/route.js",
+  "/page": "app/page.js"
 }

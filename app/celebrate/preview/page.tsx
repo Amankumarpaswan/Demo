@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Download, Share2, Volume2, VolumeX, Gift, Home, MessageCircle, QrCode, X, Send, User, Loader2, Info, RefreshCw } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import confetti from 'canvas-confetti';
 import { generatePosterCanvas } from './posterRenderer';
+// html-to-image: DOM-to-image capture (install: npm install html-to-image)
+import { toJpeg } from 'html-to-image';
 
 const MOBILE_REF = { width: 430, height: 932 };
 const MOBILE_DIAGONAL = Math.sqrt(MOBILE_REF.width ** 2 + MOBILE_REF.height ** 2);
@@ -903,6 +905,10 @@ export default function FreeStoryMode() {
   const [showPopNumber, setShowPopNumber] = useState(false);
   
   const [hasDownloaded, setHasDownloaded] = useState(false);
+  // DOM-to-image pipeline state
+  const [geminiHtml, setGeminiHtml]     = useState<string | null>(null);
+  const [pendingCapture, setPendingCapture] = useState(false);
+  const posterRenderRef = useRef<HTMLDivElement>(null);
 
   const [birthdaySelfLine, setBirthdaySelfLine] = useState('');
 
@@ -1199,86 +1205,215 @@ export default function FreeStoryMode() {
   };
 
 
-  // --- UPDATED HANDLE DOWNLOAD (AI Routing JSON Logic Added) ---
+  // ═══════════════════════════════════════════════════════════════════
+  // HANDLE DOWNLOAD — DOM-to-Image Architecture
+  // Pipeline A (success): Gemini returns HTML → render in hidden div
+  //                       → html-to-image captures → JPEG download
+  // Pipeline B (fallback): Gemini fails → hardcoded canvas poster
+  //
+  // Routes:
+  //   LAYOUT_1_COLLAGE → /api/generate-poster-styling  (9:16, up to 5 photos)
+  //   LAYOUT_2_JAYANTI → /api/generate-poster-layout   (1:1, 1 hero photo)
+  // ═══════════════════════════════════════════════════════════════════
+
+  // ── Helper: HTMLImageElement → { url: base64, orientation } ────────────
+  // orientation = 'vertical' if taller than wide, 'horizontal' otherwise.
+  // Routes use orientation to pick frame aspect-ratio (1/1 vs 4/3).
+  // All images rendered with object-position:center center (equal crop on all sides).
+  const imageToPayload = (img: HTMLImageElement): { url: string; orientation: string } => {
+    const w  = img.naturalWidth  || img.width  || 512;
+    const h  = img.naturalHeight || img.height || 512;
+    const c  = document.createElement('canvas');
+    c.width  = w;
+    c.height = h;
+    const cx = c.getContext('2d');
+    if (cx) cx.drawImage(img, 0, 0);
+    const url         = c.toDataURL('image/jpeg', 0.85).split(',')[1] || '';
+    const orientation = (h >= w) ? 'vertical' : 'horizontal';
+    return { url, orientation };
+  };
+  // Backwards-compat shim — canvas fallback still uses plain base64
+  const imageElementToBase64 = (img: HTMLImageElement): string => imageToPayload(img).url;
+
+  // ── Helper: inject user photos into Gemini HTML by replacing tokens ──
+  // Gemini uses {{PHOTO_0}}, {{PHOTO_1}} … as src placeholders.
+  const injectPhotosIntoHtml = (html: string, photosBase64: string[]): string => {
+    let result = html;
+    photosBase64.forEach((b64, i) => {
+      const dataUri = `data:image/jpeg;base64,${b64}`;
+      // Replace both quoted and unquoted variants Gemini might produce
+      result = result
+        .replace(new RegExp(`"\{\{PHOTO_${i}\}\}"`, 'g'), `"${dataUri}"`)
+        .replace(new RegExp(`'\{\{PHOTO_${i}\}\}'`, 'g'), `"${dataUri}"`)
+        .replace(new RegExp(`\{\{PHOTO_${i}\}\}`, 'g'), dataUri);
+    });
+    return result;
+  };
+
+  // ── Helper: download a base64 string as a file ────────────────────
+  const downloadBase64Image = (base64: string, mimeType: string, filename: string) => {
+    const bytes = atob(base64);
+    const ab    = new ArrayBuffer(bytes.length);
+    const ua    = new Uint8Array(ab);
+    for (let i = 0; i < bytes.length; i++) ua[i] = bytes.charCodeAt(i);
+    const blob  = new Blob([ab], { type: mimeType });
+    const url   = URL.createObjectURL(blob);
+    const a     = document.createElement('a');
+    a.download  = filename;
+    a.href      = url;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  };
+
+  // ── useEffect: fires after geminiHtml state update renders the hidden div ──
+  useEffect(() => {
+    if (!pendingCapture || !geminiHtml || !posterRenderRef.current) return;
+
+    const captureNode = posterRenderRef.current;
+
+    // Small delay to let browser fully paint the injected HTML
+    const timer = setTimeout(async () => {
+      try {
+        console.log('[DOMCapture] Capturing hidden poster node with html-to-image...');
+
+        const dataUrl = await toJpeg(captureNode, {
+          quality:      0.96,
+          pixelRatio:   2,          // 2× for crisp high-res output
+          skipAutoScale: false,
+          cacheBust:    true,
+          // Allow external fonts that Gemini might reference via @import
+          includeQueryParams: true,
+        });
+
+        // dataUrl is a "data:image/jpeg;base64,..." string
+        const base64 = dataUrl.split(',')[1] || '';
+        const pending_filename = `Jashn-${Date.now()}.jpg`;
+        downloadBase64Image(base64, 'image/jpeg', pending_filename);
+
+        console.log('[DOMCapture] ✅ Poster captured and downloaded');
+        setHasDownloaded(true);
+      } catch (captureErr) {
+        console.error('[DOMCapture] html-to-image failed:', captureErr);
+        // On capture failure show an error; the hidden div is already rendered
+        alert('Poster render captured but download failed. Please try again.');
+      } finally {
+        // Clean up: unmount the generated HTML and reset flags
+        setGeminiHtml(null);
+        setPendingCapture(false);
+        setIsDownloading(false);
+      }
+    }, 350);  // 350ms: enough for fonts, gradients, animations to paint
+
+    return () => clearTimeout(timer);
+  }, [pendingCapture, geminiHtml]);
+
+  // ── Main download handler ─────────────────────────────────────────
   const handleDownload = async () => {
     if (!data) return;
     setIsDownloading(true);
 
     try {
-      const title = getFormattedTitle();
-      const subtitle = data.customMessage || '';
-
-      const isLayout2 = data.category === 'SPECIAL' && ['JYANTI', 'DIVAS', 'FESTIVALS'].includes(data.specialSubcategory);
-      
+      const title      = getFormattedTitle();
+      const subtitle   = data.customMessage || '';
+      const isLayout2  = data.category === 'SPECIAL' && ['JYANTI', 'DIVAS', 'FESTIVALS'].includes(data.specialSubcategory);
       const layoutType = isLayout2 ? 'LAYOUT_2_JAYANTI' : 'LAYOUT_1_COLLAGE';
       const apiEndpoint = isLayout2 ? '/api/generate-poster-layout' : '/api/generate-poster-styling';
+      const maxPhotos   = isLayout2 ? 1 : 5;
+      const filename    = `Jashn-${(getDisplayName() || 'Celebration').replace(/\s/g, '-')}`;
 
-      let styleConfig = {};
-
-      try {
-        const res = await fetch(apiEndpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            occasion: title,
-            name: getDisplayName() || title,
-            message: subtitle,
-            quote: subtitle
-          })
-        });
-
-        if (res.ok) {
-          styleConfig = await res.json();
-        }
-      } catch (apiError) {
-        console.warn("API Error:", apiError);
-      }
-
+      // ── Step 1: Load user photos ───────────────────────────────────
       const loadedImages: HTMLImageElement[] = [];
-      const photosToLoad = data.photos && data.photos.length > 0 ? data.photos.slice(0, 5) : [];
+      const photosToLoad = (data.photos?.length > 0) ? data.photos.slice(0, maxPhotos) : [];
 
-      for (let src of photosToLoad) {
+      for (const src of photosToLoad) {
         try {
           const img = new Image();
           img.crossOrigin = 'anonymous';
           img.src = src;
-          await new Promise((resolve, reject) => {
-            img.onload = resolve;
-            img.onerror = reject;
+          await new Promise<void>((resolve, reject) => {
+            img.onload  = () => resolve();
+            img.onerror = () => reject(new Error('load failed'));
           });
           loadedImages.push(img);
-        } catch (e) {
-          console.error("Failed to load image");
-        }
+        } catch { console.error('Failed to load image:', src?.substring(0, 60)); }
       }
 
-      const canvas = document.createElement('canvas');
+      // ── Step 2: Convert to enriched payload { url, orientation } ─────────
+      const imagePayloads = loadedImages.map(imageToPayload).filter(p => p.url);
+      const photosBase64: string[] = imagePayloads.map(p => p.url);   // for canvas fallback
+      console.log(`[Gemini] Sending ${imagePayloads.length} photo(s) [${imagePayloads.map(p=>p.orientation).join(',')}] to ${apiEndpoint}`);
 
+      // ── Step 3: Call Gemini route — expect { isHtmlPoster, html } ─
+      try {
+        const res = await fetch(apiEndpoint, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({
+            occasion:     title,
+            name:         getDisplayName() || title,
+            message:      subtitle,
+            quote:        subtitle,
+            photos:       imagePayloads,               // enriched: { url, orientation }[]
+            design_seed:  crypto.randomUUID(),         // entropy driver
+            aspect_ratio: isLayout2 ? '1:1' : '9:16',
+            photo_count:  imagePayloads.length,
+          }),
+        });
+
+        if (res.ok) {
+          const result = await res.json();
+
+          if (result.isHtmlPoster && result.html) {
+            console.log('[Gemini] ✅ HTML poster received — injecting photos and rendering...');
+            // Replace {{PHOTO_N}} tokens with actual base64 data URIs
+            const injectedHtml = injectPhotosIntoHtml(result.html, photosBase64);
+            // Set state → triggers hidden div render → useEffect captures it
+            setGeminiHtml(injectedHtml);
+            setPendingCapture(true);
+            // NOTE: setIsDownloading(false) is called inside the useEffect after capture
+            return;  // ← useEffect takes over from here
+          }
+
+          console.warn('[Gemini] No isHtmlPoster in response — falling back to canvas');
+        } else {
+          console.warn(`[Gemini] HTTP ${res.status} — falling back to canvas`);
+        }
+      } catch (apiErr) {
+        console.warn('[Gemini] API error — falling back to canvas:', apiErr);
+      }
+
+      // ── Step 4: Canvas fallback (only if Gemini pipeline failed) ──
+      console.log(`[Canvas] Rendering fallback for ${layoutType}`);
+      let styleConfig: any = {};
+
+      try {
+        const res = await fetch(apiEndpoint, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ occasion: title, name: getDisplayName() || title, message: subtitle, quote: subtitle }),
+        });
+        if (res.ok) styleConfig = await res.json();
+      } catch { console.warn('Canvas fallback API call failed'); }
+
+      const canvas = document.createElement('canvas');
       await generatePosterCanvas(
-        canvas,
-        layoutType,
-        { 
-          title: title, 
-          subtitle: subtitle, 
-          photos: loadedImages,
-          relationName: getDisplayName(),
-          termLine: getTermLine()
-        },
+        canvas, layoutType,
+        { title, subtitle, photos: loadedImages, relationName: getDisplayName(), termLine: getTermLine() },
         styleConfig
       );
 
       const dlLink = document.createElement('a');
-      dlLink.download = `Jashn-${getDisplayName().replace(/\s/g, '-') || 'Celebration'}.jpg`;
+      dlLink.download = `${filename}.jpg`;
       dlLink.href = canvas.toDataURL('image/jpeg', 0.95);
       dlLink.click();
-
       setHasDownloaded(true);
 
     } catch (err) {
       console.error(err);
-      alert("Error generating poster.");
+      alert('Error generating poster.');
     } finally {
-      setIsDownloading(false);
+      // Only set false here for the canvas path; Gemini path does it in useEffect
+      if (!pendingCapture) setIsDownloading(false);
     }
   };
 
@@ -1684,6 +1819,31 @@ export default function FreeStoryMode() {
       )}
 
       <audio ref={audioRef} loop src={data?.music || undefined} />
+
+      {/* ── Hidden DOM-to-Image Render Target ──────────────────────────────
+          Positioned off-screen (not display:none — html-to-image needs the
+          node to be in the live DOM and painted to capture it correctly).
+          geminiHtml is the raw HTML string from Gemini with photos injected.
+          posterRenderRef points to this div for the html-to-image capture.  */}
+      {geminiHtml && (
+        <div
+          style={{
+            position: 'fixed',
+            left: '-9999px',
+            top:  '-9999px',
+            zIndex: -9999,
+            pointerEvents: 'none',
+            // No width/height here — the Gemini HTML root div sets its own 1080px size
+            overflow: 'visible',
+          }}
+          aria-hidden="true"
+        >
+          <div
+            ref={posterRenderRef}
+            dangerouslySetInnerHTML={{ __html: geminiHtml }}
+          />
+        </div>
+      )}
     </div>
   );
 }

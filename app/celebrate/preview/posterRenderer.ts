@@ -35,6 +35,277 @@ const wrapTextToArray = (ctx: CanvasRenderingContext2D, text: string, maxWidth: 
   return lines;
 };
 
+// ═══════════════════════════════════════════════════════════════════
+// FIXED LAYOUT ENGINE v5  —  12 Reference-Based Layouts
+//
+// All frame positions extracted from 12 professional reference designs
+// converted from percentage to pixel center-coordinates (1080×1920).
+//
+// AI provides: background colors, borderColor, text colors/content.
+// Frame x, y, w, h, rotation = ALWAYS from this hardcoded table.
+// Text y positions = ALWAYS from this hardcoded table.
+// ═══════════════════════════════════════════════════════════════════
+
+const CW5 = 1080;
+const clamp5 = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+// Each layout: frames[] with pixel center-coords + texts[] with y positions
+// Text x is always CW5/2 (centered) except Layout 1, 6, 9 (right-side text)
+const LAYOUT_DEFS: any[] = [
+  null, // index 0 unused — layouts are 1-indexed
+
+  // ── Layout 1: POLAROID_VERTICAL_STACK_WITH_BG_PHOTO ─────────────
+  // 3 frames stacked left, text on right side
+  {
+    frames: [
+      {x:248,  y:346,  w:389, h:538, rotation: 0},
+      {x:238,  y:902,  w:410, h:538, rotation: 0},
+      {x:243,  y:1459, w:378, h:538, rotation: 0},
+    ],
+    texts: [
+      {contentKey:'title',        x:820, y:220,  fontSize:72, align:'center', maxWidth:420},
+      {contentKey:'relationName', x:820, y:380,  fontSize:52, align:'center', maxWidth:420},
+      {contentKey:'subtitle',     x:820, y:1820, fontSize:28, align:'center', maxWidth:420},
+    ]
+  },
+
+  // ── Layout 2: SCATTERED_POLAROIDS_CARD_FAN ───────────────────────
+  // 4 scattered rotated frames, text bottom strip
+  {
+    frames: [
+      {x:308,  y:384,  w:400, h:576, rotation:-10},
+      {x:702,  y:365,  w:432, h:614, rotation:  5},
+      {x:227,  y:1094, w:389, h:576, rotation:-15},
+      {x:637,  y:1258, w:454, h:672, rotation:  8},
+    ],
+    texts: [
+      {contentKey:'title',        x:540, y:1680, fontSize:76, align:'center', maxWidth:900},
+      {contentKey:'relationName', x:540, y:1790, fontSize:48, align:'center', maxWidth:900},
+      {contentKey:'subtitle',     x:540, y:1876, fontSize:26, align:'center', maxWidth:900},
+    ]
+  },
+
+  // ── Layout 3: CLEAN_GRID_2x2_CENTER_TEXT_BAND ───────────────────
+  // 2 top + 2 bottom, text in center band
+  {
+    frames: [
+      {x:302,  y:365,  w:454, h:538, rotation:0},
+      {x:778,  y:365,  w:454, h:538, rotation:0},
+      {x:302,  y:1440, w:454, h:576, rotation:0},
+      {x:778,  y:1440, w:454, h:576, rotation:0},
+    ],
+    texts: [
+      {contentKey:'title',        x:540, y:840,  fontSize:88, align:'center', maxWidth:900},
+      {contentKey:'relationName', x:540, y:990,  fontSize:56, align:'center', maxWidth:900},
+      {contentKey:'subtitle',     x:540, y:1100, fontSize:30, align:'center', maxWidth:860},
+    ]
+  },
+
+  // ── Layout 4: ASYMMETRIC_TWO_COLUMN_WITH_HERO ───────────────────
+  // Left: 2 stacked, Right: 1 tall hero. Text bottom.
+  {
+    frames: [
+      {x:275,  y:490,  w:378, h:672,  rotation:0},
+      {x:761,  y:758,  w:486, h:1056, rotation:0},
+      {x:275,  y:1238, w:378, h:634,  rotation:0},
+    ],
+    texts: [
+      {contentKey:'title',        x:540, y:1680, fontSize:76, align:'center', maxWidth:900},
+      {contentKey:'relationName', x:540, y:1790, fontSize:52, align:'center', maxWidth:900},
+      {contentKey:'subtitle',     x:540, y:1878, fontSize:26, align:'center', maxWidth:900},
+    ]
+  },
+
+  // ── Layout 5: ORGANIC_SCATTERED_MULTI_SIZE ──────────────────────
+  // 6 frames organic, text top-left and bottom-left open areas
+  {
+    frames: [
+      {x:275,  y:634,  w:378, h:422, rotation:0},
+      {x:745,  y:442,  w:518, h:576, rotation:0},
+      {x:205,  y:1027, w:238, h:288, rotation:0},
+      {x:475,  y:1056, w:302, h:346, rotation:2},
+      {x:281,  y:1421, w:346, h:422, rotation:0},
+      {x:702,  y:1536, w:324, h:384, rotation:0},
+    ],
+    texts: [
+      {contentKey:'title',        x:270, y:120,  fontSize:72, align:'center', maxWidth:500},
+      {contentKey:'relationName', x:270, y:240,  fontSize:48, align:'center', maxWidth:500},
+      {contentKey:'subtitle',     x:270, y:1820, fontSize:26, align:'center', maxWidth:500},
+    ]
+  },
+
+  // ── Layout 6: DARK_MOODBOARD_ASYMMETRIC_OVERLAP ─────────────────
+  // 5 frames asymmetric, bold heading top-right, footer bottom
+  {
+    frames: [
+      {x:232,  y:576,  w:356, h:576, rotation:0},
+      {x:616,  y:557,  w:324, h:422, rotation:0},
+      {x:443,  y:854,  w:346, h:480, rotation:0},
+      {x:232,  y:1238, w:292, h:480, rotation:0},
+      {x:616,  y:1267, w:410, h:422, rotation:0},
+    ],
+    texts: [
+      {contentKey:'title',        x:810, y:90,   fontSize:82, align:'center', maxWidth:440},
+      {contentKey:'relationName', x:810, y:220,  fontSize:52, align:'center', maxWidth:440},
+      {contentKey:'subtitle',     x:540, y:1840, fontSize:28, align:'center', maxWidth:900},
+    ]
+  },
+
+  // ── Layout 7: STAGGERED_CASCADE_DIAGONAL ────────────────────────
+  // 4 staircase frames. Minimal text at very bottom.
+  {
+    frames: [
+      {x:297,  y:442,  w:378, h:576, rotation:0},
+      {x:518,  y:797,  w:432, h:634, rotation:0},
+      {x:254,  y:1248, w:400, h:576, rotation:0},
+      {x:659,  y:1373, w:410, h:634, rotation:0},
+    ],
+    texts: [
+      {contentKey:'title',        x:540, y:100,  fontSize:76, align:'center', maxWidth:900},
+      {contentKey:'relationName', x:540, y:220,  fontSize:52, align:'center', maxWidth:900},
+      {contentKey:'subtitle',     x:540, y:1870, fontSize:26, align:'center', maxWidth:900},
+    ]
+  },
+
+  // ── Layout 8: TILTED_STACK_PLAYFUL ──────────────────────────────
+  // 3 large tilted frames. Text top-right gap + bottom footer.
+  {
+    frames: [
+      {x:400,  y:403,  w:626, h:576, rotation:-3},
+      {x:513,  y:883,  w:486, h:538, rotation: 5},
+      {x:410,  y:1382, w:562, h:538, rotation:-2},
+    ],
+    texts: [
+      {contentKey:'title',        x:900, y:140,  fontSize:72, align:'right', maxWidth:340},
+      {contentKey:'relationName', x:900, y:260,  fontSize:48, align:'right', maxWidth:340},
+      {contentKey:'subtitle',     x:540, y:1860, fontSize:26, align:'center', maxWidth:900},
+    ]
+  },
+
+  // ── Layout 9: CLEAN_MAGAZINE_EDITORIAL_3ROW ─────────────────────
+  // 5 frames (missing right-center = text block). Text in right column.
+  {
+    frames: [
+      {x:292,  y:365,  w:475, h:576, rotation:0},
+      {x:788,  y:365,  w:475, h:576, rotation:0},
+      {x:292,  y:979,  w:475, h:538, rotation:0},
+      {x:292,  y:1574, w:475, h:538, rotation:0},
+      {x:788,  y:1574, w:475, h:538, rotation:0},
+    ],
+    texts: [
+      {contentKey:'title',        x:824, y:880,  fontSize:78, align:'center', maxWidth:440},
+      {contentKey:'relationName', x:824, y:1020, fontSize:52, align:'center', maxWidth:440},
+      {contentKey:'subtitle',     x:824, y:1140, fontSize:28, align:'center', maxWidth:440},
+    ]
+  },
+
+  // ── Layout 10: SCRAPBOOK_MIXED_MEDIA ────────────────────────────
+  // 3 slightly rotated frames. Text in open center-right + bottom-left.
+  {
+    frames: [
+      {x:302,  y:653,  w:432, h:614, rotation:-2},
+      {x:680,  y:499,  w:324, h:422, rotation: 3},
+      {x:729,  y:1286, w:378, h:576, rotation: 0},
+    ],
+    texts: [
+      {contentKey:'title',        x:740, y:900,  fontSize:76, align:'center', maxWidth:500},
+      {contentKey:'relationName', x:740, y:1040, fontSize:52, align:'center', maxWidth:500},
+      {contentKey:'subtitle',     x:270, y:1800, fontSize:28, align:'center', maxWidth:500},
+    ]
+  },
+
+  // ── Layout 11: POLAROID_GRID_OVER_FULL_PHOTO ────────────────────
+  // 4 polaroids on full-bg photo. Large text bottom open area.
+  {
+    frames: [
+      {x:259,  y:394,  w:346, h:480, rotation:-3},
+      {x:734,  y:336,  w:346, h:480, rotation: 4},
+      {x:270,  y:1037, w:324, h:461, rotation:-2},
+      {x:713,  y:1085, w:346, h:480, rotation: 3},
+    ],
+    texts: [
+      {contentKey:'title',        x:540, y:1580, fontSize:88, align:'center', maxWidth:900},
+      {contentKey:'relationName', x:540, y:1730, fontSize:56, align:'center', maxWidth:900},
+      {contentKey:'subtitle',     x:540, y:1860, fontSize:28, align:'center', maxWidth:900},
+    ]
+  },
+
+  // ── Layout 12: INVERTED_TRIANGLE_FESTIVE ────────────────────────
+  // 1 hero top + 2 below forming V-shape. Large text bottom open area.
+  {
+    frames: [
+      {x:459,  y:518,  w:594, h:576, rotation: 0},
+      {x:275,  y:1046, w:378, h:480, rotation:-5},
+      {x:675,  y:1085, w:378, h:480, rotation: 5},
+    ],
+    texts: [
+      {contentKey:'title',        x:540, y:1450, fontSize:92, align:'center', maxWidth:940},
+      {contentKey:'relationName', x:540, y:1620, fontSize:60, align:'center', maxWidth:900},
+      {contentKey:'subtitle',     x:540, y:1840, fontSize:30, align:'center', maxWidth:860},
+    ]
+  },
+];
+
+// ── MASTER: applyFixedLayout ──────────────────────────────────────
+// Called before render. Picks layout from styleConfig.layoutStyleId.
+// Overwrites ALL frame positions and text positions with pre-calculated values.
+// Preserves AI-provided colors, border styles, and text content/colors.
+const applyFixedLayout = (blueprint: any, layoutStyleId: number): any => {
+  if (!blueprint) return blueprint;
+
+  try {
+    const lid = clamp5(layoutStyleId, 1, 12);
+    const def = LAYOUT_DEFS[lid];
+    if (!def) { console.warn(`⚠️ No layout def for id=${lid}`); return blueprint; }
+
+    console.log(`🧠 Fixed Layout Engine v5: applying layout ${lid}...`);
+
+    // ── Apply photo frames ───────────────────────────────────────
+    const aiFrames = blueprint.imageFrames || [];
+    blueprint.imageFrames = def.frames.map((f: any, i: number) => {
+      const ai = aiFrames[i] || aiFrames[0] || {};
+      return {
+        shape:       ai.shape       || 'rectangle',
+        borderColor: ai.borderColor || '#FFFFFF',
+        borderWidth: clamp5(ai.borderWidth || 14, 8, 22),
+        shadow:      true,
+        x: f.x, y: f.y, w: f.w, h: f.h, rotation: f.rotation,
+      };
+    });
+
+    // ── Apply text blocks ────────────────────────────────────────
+    const aiTexts  = blueprint.textBlocks || [];
+    const maxWDef  = CW5 - 120;
+    blueprint.textBlocks = def.texts
+      .map((td: any) => {
+        const ai = aiTexts.find((t: any) => t.contentKey === td.contentKey) || {};
+        const text = (ai.text || '').trim();
+        if (!text) return null;
+        return {
+          contentKey: td.contentKey,
+          text,
+          x:          td.x,
+          y:          td.y,
+          fontSize:   td.fontSize,
+          fontFamily: ai.fontFamily || 'sans-serif',
+          color:      ai.color      || '#FFFFFF',
+          align:      td.align,
+          maxWidth:   td.maxWidth   || maxWDef,
+          isBold:     ai.isBold     || false,
+          isItalic:   ai.isItalic   || false,
+        };
+      })
+      .filter(Boolean);
+
+    console.log(`✅ Layout ${lid} applied: ${def.frames.length} frames, ${blueprint.textBlocks.length} text blocks`);
+
+  } catch (err) {
+    console.warn("⚠️ Fixed Layout Engine v5 error (non-fatal):", err);
+  }
+  return blueprint;
+};
+
+
 // --- JSON DYNAMIC RENDERING ENGINE ---
 const renderDynamicJSON = (ctx: CanvasRenderingContext2D, data: any, blueprint: any) => {
   // 1. Draw Background
@@ -306,7 +577,12 @@ export const generatePosterCanvas = async (canvas: HTMLCanvasElement, layoutType
         ctx.canvas.width = 1080; ctx.canvas.height = 1080;
       }
       
-      renderDynamicJSON(ctx, data, styleConfig.blueprint);
+      // Run intelligent layout engine BEFORE rendering
+      // Apply fixed pre-calculated layout (v4 engine)
+      // Apply fixed layout using layoutStyleId from API response
+      const layoutId = styleConfig.layoutStyleId || 1;
+      const optimizedBlueprint = applyFixedLayout(styleConfig.blueprint, layoutId);
+      renderDynamicJSON(ctx, data, optimizedBlueprint);
       return canvas;
     } catch (err) {
       console.error("⚠️ AI JSON execution failed. Engaging Fallback Systems.", err);
