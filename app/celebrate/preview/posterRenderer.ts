@@ -1,3 +1,5 @@
+//app/celebrate/preview/posterRenderer.ts
+
 export type LayoutType = 'LAYOUT_1_COLLAGE' | 'LAYOUT_2_JAYANTI';
 
 // Intelligent Text-Balancing Helper

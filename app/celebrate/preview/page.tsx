@@ -1227,9 +1227,20 @@ export default function FreeStoryMode() {
     c.width  = w;
     c.height = h;
     const cx = c.getContext('2d');
-    if (cx) cx.drawImage(img, 0, 0);
-    const url         = c.toDataURL('image/jpeg', 0.85).split(',')[1] || '';
-    const orientation = (h >= w) ? 'vertical' : 'horizontal';
+    if (cx) {
+      try {
+        cx.drawImage(img, 0, 0);
+      } catch (corsErr) {
+        // Canvas tainted by CORS — fill with placeholder colour so poster still renders
+        console.warn('[imageToPayload] Canvas tainted (CORS), using placeholder');
+        cx.fillStyle = '#e8e0d0';
+        cx.fillRect(0, 0, w, h);
+      }
+    }
+    const url = c.toDataURL('image/jpeg', 0.85).split(',')[1] || '';
+    // Detect orientation: square within 10% aspect ratio tolerance
+    const ratio = w / h;
+    const orientation = ratio > 1.1 ? 'horizontal' : ratio < 0.9 ? 'vertical' : 'square';
     return { url, orientation };
   };
   // Backwards-compat shim — canvas fallback still uses plain base64
@@ -1271,19 +1282,36 @@ export default function FreeStoryMode() {
 
     const captureNode = posterRenderRef.current;
 
-    // Small delay to let browser fully paint the injected HTML
+    // Delay to let browser fully paint injected HTML (fonts, gradients, animations)
     const timer = setTimeout(async () => {
       try {
-        console.log('[DOMCapture] Capturing hidden poster node with html-to-image...');
+        console.log('[DOMCapture] Starting html-to-image capture...');
+        console.log('[DOMCapture] Capture node:', captureNode.innerHTML.substring(0, 200));
 
-        const dataUrl = await toJpeg(captureNode, {
-          quality:      0.96,
-          pixelRatio:   2,          // 2× for crisp high-res output
-          skipAutoScale: false,
-          cacheBust:    true,
-          // Allow external fonts that Gemini might reference via @import
-          includeQueryParams: true,
-        });
+      // Options to prevent [object Event] crashes from broken internal links/CORS
+const fallbackOptions = {
+  imagePlaceholder: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
+};
+
+// Pre-warm the capture (first call often inaccurate for external fonts)
+// Wrapped in try-catch so an Event crash here doesn't kill the main capture
+try {
+  await toJpeg(captureNode, { quality: 0.5, pixelRatio: 1, ...fallbackOptions });
+} catch (preWarmErr) {
+  console.warn('[DOMCapture] Pre-warm failed, continuing anyway:', preWarmErr);
+}
+
+// Actual high-res capture
+const dataUrl = await toJpeg(captureNode, {
+  quality: 0.96,
+  pixelRatio: 2, // 2x for crisp output
+  skipAutoScale: false,
+  cacheBust: true,
+  includeQueryParams: true,
+  ...fallbackOptions,
+  // CORS-safe: embed images as data URIs (already done via injectPhotosIntoHtml)
+  fetchRequestInit: { mode: 'cors', cache: 'no-cache' },
+});
 
         // dataUrl is a "data:image/jpeg;base64,..." string
         const base64 = dataUrl.split(',')[1] || '';
@@ -1321,21 +1349,38 @@ export default function FreeStoryMode() {
       const maxPhotos   = isLayout2 ? 1 : 5;
       const filename    = `Jashn-${(getDisplayName() || 'Celebration').replace(/\s/g, '-')}`;
 
-      // ── Step 1: Load user photos ───────────────────────────────────
+      // ── Step 1: Load user photos (CORS-safe with retry) ───────────
       const loadedImages: HTMLImageElement[] = [];
       const photosToLoad = (data.photos?.length > 0) ? data.photos.slice(0, maxPhotos) : [];
 
       for (const src of photosToLoad) {
         try {
           const img = new Image();
+          // Try anonymous CORS first (needed for html-to-image canvas taint prevention)
           img.crossOrigin = 'anonymous';
-          img.src = src;
           await new Promise<void>((resolve, reject) => {
             img.onload  = () => resolve();
-            img.onerror = () => reject(new Error('load failed'));
+            img.onerror = () => {
+              // CORS failed — retry without crossOrigin (canvas fallback will still work)
+              console.warn('[CORS] crossOrigin failed, retrying without CORS attribute:', src?.substring(0, 60));
+              const img2 = new Image();
+              img2.onload  = () => { loadedImages.push(img2); resolve(); };
+              img2.onerror = () => reject(new Error('load failed completely'));
+              img2.src = src;
+              return; // img2 pushed inside, skip outer push
+            };
+            img.src = src;
+          }).then(() => {
+            // Only push if CORS retry didn't already push
+            if (!loadedImages.includes(img) && img.complete && img.naturalWidth > 0) {
+              loadedImages.push(img);
+            }
+          }).catch(err => {
+            console.error('Failed to load image:', src?.substring(0, 60), err);
           });
-          loadedImages.push(img);
-        } catch { console.error('Failed to load image:', src?.substring(0, 60)); }
+        } catch (err) {
+          console.error('Failed to load image:', src?.substring(0, 60), err);
+        }
       }
 
       // ── Step 2: Convert to enriched payload { url, orientation } ─────────
